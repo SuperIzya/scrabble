@@ -17,7 +17,10 @@ import scala.sys.process._
 val firstLine = new String("±²³SolveSpaceREVa".getBytes("UTF-8"), "iso-8859-1")
 val getCsv: String => UIO[File] = l => ZIO.effectTotal(new File(s"./languages/$l.csv"))
 val getLetterFile: (String, String) => UIO[Seq[File]] = (lang, letter) => for {
-  files <- ZIO.effectTotal(Seq(new File(s"./letters/$lang/$letter.slvs"), new File(s"./letters/$lang/$letter-comp.slvs")))
+  files <- ZIO.effectTotal(Seq(
+    new File(s"./letters/$lang/$letter-comp.slvs"),
+    new File(s"./letters/$lang/$letter.slvs")
+  ))
   _ <- ZIO.collectAll {
     files.map { file =>
       ZIO.ifM(ZIO.effectTotal(file.exists()))(ZIO.unit, ZIO.effectTotal(file.createNewFile()))
@@ -26,7 +29,7 @@ val getLetterFile: (String, String) => UIO[Seq[File]] = (lang, letter) => for {
 } yield files
 
 val template: UIO[File] = ZIO.effectTotal(new File("./template.slvs"))
-val complimentar: UIO[File] = ZIO.effectTotal(new File("./template-compl.slvs"))
+val complimentar: UIO[File] = ZIO.effectTotal(new File("./letter-template.slvs"))
 
 val lettersDir: String => UIO[File] = lang => for {
   parent <- ZIO.effectTotal(Paths.get("./letters/"))
@@ -42,7 +45,7 @@ def getEncReader(encoding: CharsetDecoder): File => UManaged[ZStream[Any, Throwa
   stream <- ZManaged.fromAutoCloseable(ZIO.effectTotal(reader.lines()))
 } yield ZStream.fromJavaStream(stream)
 
-val getReader = getEncReader(Charset.forName("iso-8859-1").newDecoder())
+val getReader: File => UManaged[ZStream[Any, Throwable, String]] = getEncReader(Charset.forName("iso-8859-1").newDecoder())
 
 val getWriter: File => UManaged[PrintWriter] = file =>
   ZManaged.fromAutoCloseable(ZIO.effectTotal(new PrintWriter(file, "iso-8859-1")))
@@ -51,8 +54,8 @@ val mesh: Seq[File] => UIO[Unit] = files => ZIO.collectAll{
   files.map { file =>
     val path = file.getPath
     val commands = Seq(
-      //"regenerate",
-      "export-mesh -o %.stl"
+      "regenerate"/*,
+      "export-mesh -o %.stl"*/
     ).map(c => s"solvespace.cli $c $path")
       .map(s => ZIO.effectTotal(s.!))
     ZIO.collectAll(commands).unit
@@ -74,11 +77,17 @@ def checkLocale(locale: String): URIO[Console, Boolean] = {
 }
 
 def applyTmpl(stream: ZStream[Any, Throwable, String], writer: PrintWriter): (String, Int) => RIO[Console, Unit] = (letter, points) => {
+  val replace: Seq[(String, String)] = Seq(
+    "Request.str=A" -> s"Request.str=$letter",
+    "Entity.str=A" -> s"Entity.str=$letter",
+    "Request.str=1" -> s"Request.str=$points",
+    "Entity.str=1" -> s"Entity.str=$points",
+    "Group.impFileRel=letter-tile.slvs" -> "Group.impFileRel=../../letter-tile.slvs",
+    "Group.impFileRel=letter-template.slvs" -> s"Group.impFileRel=$letter-comp.slvs"
+  )
   stream
-    .map(_.replace("Request.str=A", s"Request.str=$letter")
-      .replace("Request.str=1", s"Request.str=$points")
-      .replace("Group.impFileRel=template.slvs", s"Group.impFileRel=$letter.slvs")
-    ).mapM(l => ZIO.effectTotal(writer.println(l)))
+    .map(s => replace.foldLeft(s)((r, p) => r.replace(p._1, p._2)))
+    .mapM(l => ZIO.effectTotal(writer.println(l)))
     .runDrain
 }
 
@@ -87,7 +96,7 @@ def populate(lang: String): (String, Int) => RIO[Console, Seq[File]] = (letter, 
   val resources = for {
     tmpl <- ZManaged.fromEffect(template)
     compl <- ZManaged.fromEffect(complimentar)
-    streams <- ZManaged.collectAll(Seq(tmpl, compl).map(getReader))
+    streams <- ZManaged.collectAll(Seq(compl, tmpl).map(getReader))
     files <- ZManaged.fromEffect(getLetterFile(lang, letter))
     writers <- ZManaged.collectAll(files.map(getWriter))
     templateWriters <- ZManaged.collectAll(writers.zip(streams).map{
