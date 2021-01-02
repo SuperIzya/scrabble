@@ -1,3 +1,9 @@
 # Created by .ignore support plugin (hsz.mobi)
 .idea/
 scrabble.iml
+
+*.FCStd1
+
+*.slvs~
+letters/*
+!letters/*/*.stl
