@@ -6,7 +6,7 @@ import $ivy.`dev.zio::zio:1.0.3`
 import $ivy.`dev.zio::zio-streams:1.0.3`
 
 import java.util.stream.{Stream => JStream}
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 import zio._
 import zio.stream._
 import zio.console._

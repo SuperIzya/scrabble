@@ -5,5 +5,3 @@ scrabble.iml
 *.FCStd1
 
 *.slvs~
-letters/*
-!letters/*/*.stl
